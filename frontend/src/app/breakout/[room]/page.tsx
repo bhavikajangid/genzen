@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { BreakoutCafeRoom } from "@/components/BreakoutCafeRoom";
 
-export default async function BreakoutRoomPage({ params }: { params: { room: string } }) {
+export default async function BreakoutRoomPage({ params }: { params: Promise<{ room: string }> }) {
   const session = await getServerSession(authOptions).catch(() => null);
   if (!session) redirect("/login");
-  return <BreakoutCafeRoom roomId={decodeURIComponent(params.room)} />;
+  const { room } = await params;
+  return <BreakoutCafeRoom roomId={decodeURIComponent(room)} />;
 }
