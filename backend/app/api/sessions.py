@@ -1,14 +1,12 @@
-from __future__ import annotations
-
-from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
 from app.db import get_db
+from app.limiter import limiter
 from app.models import Room, SessionRecord
 from app.schemas import SessionCreateIn, SessionEndIn, SessionOut
 
@@ -17,14 +15,18 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.post("", response_model=SessionOut)
+@limiter.limit("30/minute")
 async def create_session(
-    payload: SessionCreateIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    request: Request, payload: SessionCreateIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> SessionOut:
-    room = await db.get(Room, payload.room_id)
+    result = await db.execute(select(Room).where(Room.name == payload.room_name))
+    room = result.scalar_one_or_none()
     if not room:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+        room = Room(name=payload.room_name, mode="focus", created_by_id=current.id)
+        db.add(room)
+        await db.flush()
 
-    record = SessionRecord(room_id=payload.room_id, owner_id=current.id, started_at=payload.started_at)
+    record = SessionRecord(room_id=room.id, owner_id=current.id, started_at=payload.started_at)
     db.add(record)
     await db.commit()
     await db.refresh(record)

@@ -1,10 +1,12 @@
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
-import { BreakoutCafeRoom } from "@/components/BreakoutCafeRoom";
+import { DashboardClient } from "@/components/DashboardClient";
 
-export default async function BreakoutRoomPage({ params }: { params: { room: string } }) {
+export default async function DashboardPage() {
   const session = await getServerSession(authOptions).catch(() => null);
   if (!session) redirect("/login");
-  return <BreakoutCafeRoom roomId={decodeURIComponent(params.room)} />;
+
+  return <DashboardClient />;
 }
+

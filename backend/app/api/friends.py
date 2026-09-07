@@ -1,11 +1,10 @@
-from __future__ import annotations
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
 from app.db import get_db
+from app.limiter import limiter
 from app.models import Friendship, User
 from app.schemas import FriendAcceptIn, FriendRequestIn
 
@@ -14,8 +13,9 @@ router = APIRouter(prefix="/friends", tags=["friends"])
 
 
 @router.post("/request")
+@limiter.limit("10/minute")
 async def request_friend(
-    payload: FriendRequestIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    request: Request, payload: FriendRequestIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
     if payload.user_id == current.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot friend yourself")
@@ -60,6 +60,26 @@ async def accept_friend(
     friendship.status = "accepted"
     await db.commit()
     return {"status": "accepted"}
+
+
+@router.get("/pending")
+async def list_pending_requests(
+    current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> dict[str, list[dict[str, str]]]:
+    q = select(Friendship).where(Friendship.addressee_id == current.id, Friendship.status == "pending")
+    friendships = (await db.execute(q)).scalars().all()
+    requester_ids = {f.requester_id for f in friendships}
+    if not requester_ids:
+        return {"pending": []}
+
+    users = (await db.execute(select(User).where(User.id.in_(requester_ids)))).scalars().all()
+    by_id = {u.id: u for u in users}
+    return {
+        "pending": [
+            {"user_id": rid, "name": (by_id[rid].display_name or by_id[rid].name or rid) if rid in by_id else rid}
+            for rid in requester_ids
+        ]
+    }
 
 
 @router.get("")

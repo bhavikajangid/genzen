@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -9,14 +10,23 @@ from uuid import uuid4
 
 import socketio
 from redis.asyncio import Redis
+from sqlalchemy import select
 
 from app.auth import CurrentUser, verify_nextauth_jwt
+from app.db import SessionLocal
+from app.models import Room, RoomMessage
 from app.redis_client import get_redis
 from app.settings import settings
 
+logger = logging.getLogger(__name__)
+
 
 def create_sio() -> socketio.AsyncServer:
-    return socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=[settings.frontend_url])
+    kwargs: dict = dict(async_mode="asgi", cors_allowed_origins=[settings.frontend_url])
+    if settings.redis_url:
+        mgr = socketio.AsyncRedisManager(settings.redis_url)
+        kwargs["client_manager"] = mgr
+    return socketio.AsyncServer(**kwargs)
 
 
 sio = create_sio()
@@ -56,6 +66,14 @@ async def _broadcast_presence(room_id: str) -> None:
             }
         )
     await sio.emit("presence:update", {"users": users}, room=room_id)
+
+async def _get_user_public(user_id: str) -> dict[str, str]:
+    data = await redis.hgetall(_user_key(user_id))
+    return {
+        "id": user_id,
+        "name": (data.get("name") or user_id)[:80],
+        "emoji": (data.get("emoji") or "")[:16],
+    }
 
 
 async def _ensure_user_cache(user: CurrentUser) -> None:
@@ -223,6 +241,58 @@ async def session_end(sid: str, data: dict[str, Any]) -> None:
     ended_at = datetime.now(tz=timezone.utc)
     await _stop_timer(room_id)
     await sio.emit("session:end", {"roomId": room_id, "endedAt": ended_at.isoformat()}, room=room_id)
+
+async def _upsert_room(room_name: str) -> Room:
+    """Get or create a room by name, returning the ORM object."""
+    async with SessionLocal() as db:
+        result = await db.execute(select(Room).where(Room.name == room_name))
+        room = result.scalar_one_or_none()
+        if not room:
+            room = Room(name=room_name, mode="focus")
+            db.add(room)
+            await db.commit()
+            await db.refresh(room)
+        return room
+
+
+@sio.on("chat:send")
+async def chat_send(sid: str, data: dict[str, Any]) -> None:
+    room_id = str(data.get("roomId") or data.get("room_id") or "")
+    text = data.get("text")
+    if not room_id or not isinstance(text, str):
+        return
+    text = text.strip()
+    if not text:
+        return
+    if len(text) > 800:
+        text = text[:800]
+
+    user = await _sid_user(sid)
+    await _ensure_user_cache(user)
+    public = await _get_user_public(user.id)
+
+    msg_id = uuid4().hex
+    now = datetime.now(tz=timezone.utc)
+
+    # Persist to DB for authenticated users only
+    is_guest = bool(user.raw_claims.get("guest"))
+    if not is_guest:
+        try:
+            room = await _upsert_room(room_id)
+            async with SessionLocal() as db:
+                db.add(RoomMessage(id=uuid4(), room_id=room.id, user_id=user.id, content=text, created_at=now))
+                await db.commit()
+        except Exception:
+            logger.exception("Failed to persist chat message for room=%s user=%s", room_id, user.id)
+
+    payload = {
+        "id": msg_id,
+        "roomId": room_id,
+        "text": text,
+        "ts": now.isoformat(),
+        "user": public,
+    }
+    await sio.emit("chat:message", payload, room=room_id)
 
 
 async def _start_timer(room_id: str, session_id: str, started_at: datetime, duration_seconds: int) -> None:
