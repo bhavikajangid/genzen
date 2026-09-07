@@ -33,7 +33,7 @@ class RoomTokenOut(BaseModel):
 
 
 class SessionCreateIn(BaseModel):
-    room_id: UUID
+    room_name: str = Field(min_length=1, max_length=120)
     started_at: datetime
 
 

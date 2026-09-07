@@ -1,14 +1,13 @@
-from __future__ import annotations
-
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
 from app.db import get_db
+from app.limiter import limiter
 from app.models import User
 from app.schemas import RoomTokenIn, RoomTokenOut
 from app.settings import settings
@@ -18,8 +17,9 @@ router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 
 @router.post("/token", response_model=RoomTokenOut)
+@limiter.limit("20/minute")
 async def mint_livekit_token(
-    payload: RoomTokenIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    request: Request, payload: RoomTokenIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> RoomTokenOut:
     if not (settings.livekit_api_key and settings.livekit_api_secret and settings.livekit_url):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="LiveKit not configured")

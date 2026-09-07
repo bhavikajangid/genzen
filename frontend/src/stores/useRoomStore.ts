@@ -25,4 +25,3 @@ export const useRoomStore = create<RoomState>((set) => ({
   setMode: (mode) => set({ mode }),
   setPresence: (presence) => set({ presence })
 }));
-

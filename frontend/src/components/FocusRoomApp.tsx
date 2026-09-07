@@ -1,12 +1,16 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { BackgroundMedia } from "@/components/BackgroundMedia";
 import { PresenceIndicator } from "@/components/PresenceIndicator";
 import { ModeToggle } from "@/components/ModeToggle";
+import { AuthButtons } from "@/components/AuthButtons";
 import { useRoomStore } from "@/stores/useRoomStore";
 import { useRoomSocket } from "@/hooks/useRoomSocket";
 import { useSessionSync } from "@/hooks/useSessionSync";
+import { createSession, endSession } from "@/services/sessions";
 
 type Screen = "intention" | "room" | "reflection";
 
@@ -19,19 +23,17 @@ const avatarColors = [
   "rgba(255,200,100,0.15)"
 ];
 
-const initialPeople = [
-  { name: "you", emoji: "🧑‍💻", mins: 0, isYou: true },
-  { name: "Priya", emoji: "👩‍🎨", mins: 12 },
-  { name: "Arjun", emoji: "👨‍💻", mins: 27 },
-  { name: "Sam", emoji: "🧑‍🔬", mins: 8 },
-  { name: "Nadia", emoji: "👩‍💼", mins: 34 },
-  { name: "Leo", emoji: "🧑‍🎓", mins: 5 }
-] as const;
-
 export function FocusRoomApp() {
+  const router = useRouter();
+  const { data: session } = useSession();
+  const backendToken = (session as any)?.backendToken as string | undefined;
+
   const [screen, setScreen] = React.useState<Screen>("intention");
   const [intention, setIntention] = React.useState("");
   const [selectedDuration, setSelectedDuration] = React.useState(50);
+  const [reflection, setReflection] = React.useState("");
+  const [activeSessionId, setActiveSessionId] = React.useState<string | null>(null);
+  const sessionStartedAtRef = React.useRef<string | null>(null);
 
   const [totalSeconds, setTotalSeconds] = React.useState(50 * 60);
   const [secondsLeft, setSecondsLeft] = React.useState(50 * 60);
@@ -43,9 +45,17 @@ export function FocusRoomApp() {
   const roomId = useRoomStore((s) => s.roomId);
   const setRoomId = useRoomStore((s) => s.setRoomId);
   const mode = useRoomStore((s) => s.mode);
+  const presence = useRoomStore((s) => s.presence);
 
-  const [people, setPeople] = React.useState(() => initialPeople.map((p) => ({ ...p })));
-  const [onlineCount, setOnlineCount] = React.useState(12);
+  const [ownId, setOwnId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("userIdentity");
+      if (raw) setOwnId((JSON.parse(raw) as { id?: string }).id ?? null);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const { socket } = useRoomSocket(inSession ? roomId : null);
   const sessionSync = useSessionSync({
@@ -62,28 +72,10 @@ export function FocusRoomApp() {
   });
 
   React.useEffect(() => {
-    const id = window.setInterval(() => {
-      const base = 12;
-      const delta = Math.floor(Math.random() * 3) - 1;
-      setOnlineCount(Math.max(8, base + delta));
-    }, 8000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  React.useEffect(() => {
     if (screen !== "room") return;
 
     timerRef.current = window.setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) return 0;
-        const next = prev - 1;
-        if (next % 60 === 0) {
-          setPeople((peoplePrev) =>
-            peoplePrev.map((p) => (p.isYou ? p : { ...p, mins: p.mins + 1 }))
-          );
-        }
-        return next;
-      });
+      setSecondsLeft((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
 
     return () => {
@@ -102,6 +94,11 @@ export function FocusRoomApp() {
     setScreen("reflection");
     setInSession(false);
   }, [screen, secondsLeft]);
+
+  const breakoutRoomName = React.useMemo(() => {
+    const base = roomId ?? "deep-work";
+    return `breakout-${base}`;
+  }, [roomId]);
 
   const formattedTime = React.useMemo(() => {
     const m = Math.floor(secondsLeft / 60);
@@ -124,30 +121,56 @@ export function FocusRoomApp() {
     totalSecondsRef.current = nextTotal;
     setSecondsLeft(nextTotal);
 
-    setPeople(initialPeople.map((p) => ({ ...p })));
     setScreen("room");
     setInSession(true);
     setDoorKey((k) => k + 1);
+    window.localStorage.setItem("focusroom:session_active", "1");
 
     const nextRoomId = roomId ?? "deep-work";
     if (!roomId) setRoomId(nextRoomId);
     if (socket) socket.emit("session:start", { roomId: nextRoomId, durationSeconds: nextTotal, intention: nextIntention });
+
+    if (backendToken) {
+      const startedAt = new Date().toISOString();
+      sessionStartedAtRef.current = startedAt;
+      createSession({ room_name: nextRoomId, started_at: startedAt }, backendToken)
+        .then((s) => setActiveSessionId(s.id))
+        .catch(() => {/* non-blocking */});
+    }
   };
 
-  const endSession = () => {
+  const handleEndSession = () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = null;
     setScreen("reflection");
     setInSession(false);
+    window.localStorage.setItem("focusroom:session_active", "0");
     sessionSync.end();
   };
 
   const finishReflection = () => {
+    if (activeSessionId && backendToken) {
+      const elapsed = totalSecondsRef.current - secondsLeft;
+      endSession(
+        activeSessionId,
+        {
+          ended_at: new Date().toISOString(),
+          duration_seconds: Math.max(0, elapsed),
+          reflection: reflection.trim() || undefined,
+        },
+        backendToken
+      ).catch(() => {/* non-blocking */});
+    }
+
     setIntention("");
+    setReflection("");
     setSelectedDuration(50);
+    setActiveSessionId(null);
+    sessionStartedAtRef.current = null;
     setScreen("intention");
     setInSession(false);
     setRoomId(null);
+    window.localStorage.setItem("focusroom:session_active", "0");
   };
 
   return (
@@ -157,11 +180,14 @@ export function FocusRoomApp() {
 
       <div className="app">
         <nav>
-          <span className="nav-brand">The Library</span>
-          <div className="nav-status">
-            <div className="pulse-dot" />
-            <span>{onlineCount} people focused now</span>
-          </div>
+          <span className="nav-brand">focusroom</span>
+          {inSession ? (
+            <div className="nav-status">
+              <div className="pulse-dot" />
+              <span>{presence.length} in this room</span>
+            </div>
+          ) : null}
+          <AuthButtons />
         </nav>
 
         <div className={`screen ${screen === "intention" ? "active" : ""}`} id="screen-intention">
@@ -231,12 +257,24 @@ export function FocusRoomApp() {
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
             <PresenceIndicator />
-            <ModeToggle
-              onChange={(next) => {
-                if (!roomId || !socket) return;
-                socket.emit("room:mode", { roomId, mode: next });
-              }}
-            />
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  if (roomId && socket) socket.emit("room:mode", { roomId, mode: "social" });
+                  router.push(`/breakout/${encodeURIComponent(breakoutRoomName)}`);
+                }}
+              >
+                Breakout
+              </button>
+              <ModeToggle
+                onChange={(next) => {
+                  if (!roomId || !socket) return;
+                  socket.emit("room:mode", { roomId, mode: next });
+                }}
+              />
+            </div>
           </div>
 
           <div className="silence-bar">
@@ -254,20 +292,24 @@ export function FocusRoomApp() {
           <div className="people-section">
             <p className="section-label">In this room</p>
             <div className="people-grid" id="peopleGrid">
-              {people.map((p, i) => {
-                const elapsedMins = Math.floor((totalSeconds - secondsLeft) / 60);
-                const mins = p.isYou ? elapsedMins : p.mins;
-                return (
-                  <div key={`${p.name}-${i}`} className="person-card active-focus">
-                    <div className="avatar" style={{ background: avatarColors[i % avatarColors.length] }}>
-                      <span aria-hidden="true">{p.emoji}</span>
-                      {!p.isYou ? <div className="avatar-ring" /> : null}
+              {presence.length === 0 ? (
+                <p style={{ opacity: 0.6, fontSize: 13 }}>Just you for now.</p>
+              ) : (
+                presence.map((p, i) => {
+                  const isYou = !!ownId && p.id === ownId;
+                  const elapsedMins = Math.floor((totalSeconds - secondsLeft) / 60);
+                  return (
+                    <div key={p.id} className="person-card active-focus">
+                      <div className="avatar" style={{ background: avatarColors[i % avatarColors.length] }}>
+                        <span aria-hidden="true">{p.emoji || "🧑‍💻"}</span>
+                        {!isYou ? <div className="avatar-ring" /> : null}
+                      </div>
+                      <span className="person-name">{isYou ? "you" : p.name}</span>
+                      {isYou ? <span className="person-time">{elapsedMins}m</span> : null}
                     </div>
-                    <span className="person-name">{p.name}</span>
-                    <span className="person-time">{mins}m</span>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -277,7 +319,7 @@ export function FocusRoomApp() {
             <button type="button" className="btn-secondary">
               {progressPct}% done
             </button>
-            <button type="button" className="btn-end" onClick={endSession}>
+            <button type="button" className="btn-end" onClick={handleEndSession}>
               End session
             </button>
           </div>
@@ -294,6 +336,20 @@ export function FocusRoomApp() {
             </h1>
             <p className="screen-sub">Take a moment before you move on.</p>
 
+            <div className="form-group" style={{ textAlign: "left" }}>
+              <label htmlFor="reflectionInput">How did it go? (optional)</label>
+              <textarea
+                className="input-field"
+                id="reflectionInput"
+                rows={3}
+                value={reflection}
+                onChange={(e) => setReflection(e.target.value)}
+                placeholder="What did you accomplish? Any distractions?"
+                maxLength={500}
+                style={{ resize: "vertical" }}
+              />
+            </div>
+
             <button
               type="button"
               className="btn-primary"
@@ -305,6 +361,7 @@ export function FocusRoomApp() {
           </div>
         </div>
       </div>
+
     </>
   );
 }

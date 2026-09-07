@@ -27,9 +27,9 @@ export function BackgroundMedia({ inSession, doorKey }: { inSession: boolean; do
       const r4 = rand01(4000 + i * 13);
       const r5 = rand01(5000 + i * 17);
       return {
-        left: r1 * 100,
-        top: r2 * 70,
-        size: 0.7 + r3 * 2.1,
+        left: (r1 * 100).toFixed(3),
+        top: (r2 * 70).toFixed(3),
+        size: (0.7 + r3 * 2.1).toFixed(3),
         dur: (2.2 + r4 * 2.8).toFixed(1),
         delay: (r5 * 3.5).toFixed(1)
       };
@@ -43,9 +43,9 @@ export function BackgroundMedia({ inSession, doorKey }: { inSession: boolean; do
       const r3 = rand01(8000 + i * 13);
       const r4 = rand01(9000 + i * 17);
       return {
-        left: r1 * 100,
-        top: r2 * 65,
-        size: 0.6 + r3 * 1.8,
+        left: (r1 * 100).toFixed(3),
+        top: (r2 * 65).toFixed(3),
+        size: (0.6 + r3 * 1.8).toFixed(3),
         dur: (2 + r4 * 2).toFixed(1),
         delay: (rand01(9100 + i * 19) * 3).toFixed(1)
       };

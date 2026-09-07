@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSession } from "next-auth/react";
 import { getSocket } from "@/lib/socket";
 import { useRoomStore } from "@/stores/useRoomStore";
 
@@ -25,6 +26,7 @@ function getIdentity() {
 export function useRoomSocket(roomId: string | null) {
   const setPresence = useRoomStore((s) => s.setPresence);
   const setMode = useRoomStore((s) => s.setMode);
+  const { data: session } = useSession();
 
   const socket = React.useMemo(() => getSocket(), []);
 
@@ -49,21 +51,39 @@ export function useRoomSocket(roomId: string | null) {
 
   React.useEffect(() => {
     if (!socket) return;
-    if (!roomId) return;
 
     const identity = getIdentity();
-    socket.connect();
-    socket.emit("room:join", { roomId, ...identity });
+    const token = (session as any)?.backendToken as string | undefined;
+    (socket as any).auth = { ...identity, token };
+    if (!socket.connected) socket.connect();
 
     return () => {
-      socket.emit("room:leave", { roomId });
+      // keep socket connected while app is mounted (for global stats)
+    };
+  }, [socket, session]);
+
+  const joinedRoomRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!socket) return;
+
+    const prev = joinedRoomRef.current;
+    if (prev && prev !== roomId) socket.emit("room:leave", { roomId: prev });
+    if (roomId && prev !== roomId) socket.emit("room:join", { roomId, ...getIdentity() });
+    joinedRoomRef.current = roomId;
+    if (!roomId) setPresence([]);
+  }, [socket, roomId, setPresence]);
+
+  React.useEffect(() => {
+    if (!socket) return;
+    return () => {
+      if (joinedRoomRef.current) socket.emit("room:leave", { roomId: joinedRoomRef.current });
+      joinedRoomRef.current = null;
       socket.disconnect();
     };
-  }, [socket, roomId]);
+  }, [socket]);
 
   return {
     connected: !!socket?.connected,
     socket
   };
 }
-

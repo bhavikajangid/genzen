@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -17,17 +19,29 @@ export async function GET(req: Request) {
 
   const target = new URL("/rooms/token", backendBase);
 
-  const incomingAuth = req.headers.get("authorization");
+  const session = await getServerSession(authOptions).catch(() => null);
+  const backendToken = (session as any)?.backendToken as string | undefined;
+
+  const authed = Boolean(backendToken);
+  const body = authed
+    ? { room_name: room }
+    : {
+        room_name: room,
+        user_id: guestId || undefined,
+        user_name: guestName || undefined,
+        emoji: guestEmoji || undefined
+      };
+
   const res = await fetch(target, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(incomingAuth ? { authorization: incomingAuth } : {}),
-      ...(guestId ? { "x-guest-id": guestId } : {}),
-      ...(guestName ? { "x-guest-name": guestName } : {}),
-      ...(guestEmoji ? { "x-guest-emoji": guestEmoji } : {})
+      ...(backendToken ? { authorization: `Bearer ${backendToken}` } : {}),
+      ...(!authed && guestId ? { "x-guest-id": guestId } : {}),
+      ...(!authed && guestName ? { "x-guest-name": guestName } : {}),
+      ...(!authed && guestEmoji ? { "x-guest-emoji": guestEmoji } : {})
     },
-    body: JSON.stringify({ room_name: room, user_id: guestId || undefined, user_name: guestName || undefined, emoji: guestEmoji || undefined })
+    body: JSON.stringify(body)
   });
 
   const data = await res.json().catch(() => ({}));
