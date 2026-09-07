@@ -36,6 +36,7 @@ class User(Base, TimestampMixin):
 
 class Room(Base, TimestampMixin):
     __tablename__ = "rooms"
+    __table_args__ = (UniqueConstraint("name", name="uq_rooms_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -60,6 +61,10 @@ class SessionRecord(Base, TimestampMixin):
 
     duration_seconds: Mapped[int | None] = mapped_column(nullable=True)
     reflection: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    focus_seconds: Mapped[int] = mapped_column(default=0, server_default="0", nullable=False)
+    social_seconds: Mapped[int] = mapped_column(default=0, server_default="0", nullable=False)
+    end_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class Friendship(Base, TimestampMixin):

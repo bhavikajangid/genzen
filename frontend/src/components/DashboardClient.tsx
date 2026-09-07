@@ -2,18 +2,11 @@
 
 import * as React from "react";
 import { useSession, signOut } from "next-auth/react";
-import { getFocusedSecondsToday } from "@/lib/focusStats";
+import { FocusStatBadge } from "@/components/FocusStatBadge";
 
 export function DashboardClient() {
   const { data } = useSession();
-  const [minutes, setMinutes] = React.useState(0);
-
-  React.useEffect(() => {
-    const update = () => setMinutes(Math.floor(getFocusedSecondsToday() / 60));
-    update();
-    const id = window.setInterval(update, 5000);
-    return () => window.clearInterval(id);
-  }, []);
+  const backendToken = (data as any)?.backendToken as string | undefined;
 
   return (
     <main style={{ minHeight: "100vh", maxWidth: 860, margin: "0 auto", padding: "40px 24px" }}>
@@ -56,11 +49,9 @@ export function DashboardClient() {
             background: "rgba(255,255,255,0.06)"
           }}
         >
-          <p style={{ opacity: 0.75, marginTop: 0, marginBottom: 6 }}>Focused today</p>
-          <div style={{ fontSize: 42, fontWeight: 700, letterSpacing: "-0.02em" }}>
-            {minutes} <span style={{ fontSize: 18, opacity: 0.75 }}>min</span>
-          </div>
-          <p style={{ opacity: 0.65, marginBottom: 0 }}>Counts time while you’re in a session on this device.</p>
+          <p style={{ opacity: 0.75, marginTop: 0, marginBottom: 10 }}>Focused today</p>
+          <FocusStatBadge token={backendToken} style={{ border: "none", background: "transparent", padding: 0 }} />
+          <p style={{ opacity: 0.65, marginTop: 10, marginBottom: 0 }}>Counts focus time recorded on completed or ended sessions.</p>
         </div>
       </section>
     </main>

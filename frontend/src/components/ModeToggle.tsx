@@ -5,10 +5,10 @@ import { useRoomStore, type RoomMode } from "@/stores/useRoomStore";
 
 export function ModeToggle({ onChange }: { onChange?: (mode: RoomMode) => void }) {
   const mode = useRoomStore((s) => s.mode);
-  const setMode = useRoomStore((s) => s.setMode);
+  const switchMode = useRoomStore((s) => s.switchMode);
 
   const set = (next: RoomMode) => {
-    setMode(next);
+    switchMode(next);
     onChange?.(next);
   };
 

@@ -3,9 +3,14 @@
 import * as React from "react";
 import type { Socket } from "socket.io-client";
 
+type EndReason = "completed" | "manual" | "tab_switch";
+
 type SyncSocket = Socket<
   { "session:tick": (payload: { secondsLeft: number; totalSeconds?: number }) => void },
-  { "session:start": (payload: { roomId: string; durationSeconds: number; intention?: string }) => void; "session:end": (payload: { roomId: string }) => void }
+  {
+    "session:start": (payload: { roomId: string; durationSeconds: number; intention?: string }) => void;
+    "session:end": (payload: { roomId: string; reason?: EndReason }) => void;
+  }
 >;
 
 export function useSessionSync({
@@ -39,11 +44,14 @@ export function useSessionSync({
     [roomId, socket]
   );
 
-  const end = React.useCallback(() => {
-    if (!roomId) return;
-    if (!socket) return;
-    socket.emit("session:end", { roomId });
-  }, [roomId, socket]);
+  const end = React.useCallback(
+    (reason?: EndReason) => {
+      if (!roomId) return;
+      if (!socket) return;
+      socket.emit("session:end", { roomId, reason });
+    },
+    [roomId, socket]
+  );
 
   return { start, end };
 }

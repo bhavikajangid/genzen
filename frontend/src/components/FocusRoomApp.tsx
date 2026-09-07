@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { BackgroundMedia } from "@/components/BackgroundMedia";
 import { PresenceIndicator } from "@/components/PresenceIndicator";
 import { ModeToggle } from "@/components/ModeToggle";
@@ -10,7 +11,12 @@ import { AuthButtons } from "@/components/AuthButtons";
 import { useRoomStore } from "@/stores/useRoomStore";
 import { useRoomSocket } from "@/hooks/useRoomSocket";
 import { useSessionSync } from "@/hooks/useSessionSync";
-import { createSession, endSession } from "@/services/sessions";
+import { useSessionEndOnHidden } from "@/hooks/useSessionEndOnHidden";
+import { createSession, endSession as endSessionRequest } from "@/services/sessions";
+import { endActiveSession, type EndReason } from "@/lib/endSession";
+import { getIdentity } from "@/lib/identity";
+import { FocusStatBadge } from "@/components/FocusStatBadge";
+import { LiveKitVideoStrip } from "@/components/LiveKitVideoStrip";
 
 type Screen = "intention" | "room" | "reflection";
 
@@ -25,75 +31,61 @@ const avatarColors = [
 
 export function FocusRoomApp() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: session } = useSession();
   const backendToken = (session as any)?.backendToken as string | undefined;
 
-  const [screen, setScreen] = React.useState<Screen>("intention");
-  const [intention, setIntention] = React.useState("");
+  const [screen, setScreen] = React.useState<Screen>(() => (useRoomStore.getState().sessionActive ? "room" : "intention"));
+  const [intentionDraft, setIntentionDraft] = React.useState("");
   const [selectedDuration, setSelectedDuration] = React.useState(50);
   const [reflection, setReflection] = React.useState("");
-  const [activeSessionId, setActiveSessionId] = React.useState<string | null>(null);
   const sessionStartedAtRef = React.useRef<string | null>(null);
-
-  const [totalSeconds, setTotalSeconds] = React.useState(50 * 60);
-  const [secondsLeft, setSecondsLeft] = React.useState(50 * 60);
-  const timerRef = React.useRef<number | null>(null);
-  const totalSecondsRef = React.useRef(50 * 60);
+  const lastEndReasonRef = React.useRef<EndReason>("completed");
 
   const [doorKey, setDoorKey] = React.useState(0);
-  const [inSession, setInSession] = React.useState(false);
   const roomId = useRoomStore((s) => s.roomId);
-  const setRoomId = useRoomStore((s) => s.setRoomId);
   const mode = useRoomStore((s) => s.mode);
   const presence = useRoomStore((s) => s.presence);
+  const intention = useRoomStore((s) => s.intention);
+  const sessionActive = useRoomStore((s) => s.sessionActive);
+  const activeSessionId = useRoomStore((s) => s.sessionId);
+  const totalSeconds = useRoomStore((s) => s.sessionTotalSeconds);
+  const secondsLeft = useRoomStore((s) => s.sessionSecondsLeft);
+  const startSession = useRoomStore((s) => s.startSession);
+  const setTick = useRoomStore((s) => s.setTick);
+  const setSessionId = useRoomStore((s) => s.setSessionId);
+  const resetSession = useRoomStore((s) => s.resetSession);
+  const cameraOn = useRoomStore((s) => s.cameraOn);
+  const setCameraOn = useRoomStore((s) => s.setCameraOn);
+  const inSession = screen === "room" && sessionActive;
 
   const [ownId, setOwnId] = React.useState<string | null>(null);
   React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("userIdentity");
-      if (raw) setOwnId((JSON.parse(raw) as { id?: string }).id ?? null);
-    } catch {
-      /* ignore */
-    }
+    setOwnId(getIdentity().id);
   }, []);
 
   const { socket } = useRoomSocket(inSession ? roomId : null);
-  const sessionSync = useSessionSync({
+  useSessionSync({
     roomId,
     socket: (socket as never) ?? null,
     enabled: inSession,
     onTick: ({ secondsLeft: nextLeft, totalSeconds: nextTotal }) => {
-      if (typeof nextTotal === "number" && nextTotal > 0) {
-        totalSecondsRef.current = nextTotal;
-        setTotalSeconds(nextTotal);
-      }
-      if (typeof nextLeft === "number") setSecondsLeft(nextLeft);
+      if (typeof nextLeft === "number") setTick(nextLeft, nextTotal);
     }
   });
 
-  React.useEffect(() => {
-    if (screen !== "room") return;
+  const endSessionAndShowReflection = React.useCallback(
+    (reason: EndReason) => {
+      lastEndReasonRef.current = reason;
+      setScreen("reflection");
+      void endActiveSession(reason, { backendToken }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["me-stats"] });
+      });
+    },
+    [backendToken, queryClient]
+  );
 
-    timerRef.current = window.setInterval(() => {
-      setSecondsLeft((prev) => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) window.clearInterval(timerRef.current);
-      timerRef.current = null;
-    };
-  }, [screen]);
-
-  React.useEffect(() => {
-    if (screen !== "room") return;
-    if (secondsLeft > 0) return;
-
-    if (timerRef.current) window.clearInterval(timerRef.current);
-    timerRef.current = null;
-
-    setScreen("reflection");
-    setInSession(false);
-  }, [screen, secondsLeft]);
+  useSessionEndOnHidden(sessionActive, () => endSessionAndShowReflection("tab_switch"));
 
   const breakoutRoomName = React.useMemo(() => {
     const base = roomId ?? "deep-work";
@@ -106,71 +98,70 @@ export function FocusRoomApp() {
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }, [secondsLeft]);
 
+  React.useEffect(() => {
+    if (screen !== "room") return;
+    if (!sessionActive) return;
+    if (secondsLeft > 0) return;
+
+    endSessionAndShowReflection("completed");
+  }, [screen, sessionActive, secondsLeft, endSessionAndShowReflection]);
+
+  React.useEffect(() => {
+    if (screen !== "room") return;
+    document.title = `${formattedTime} · focusroom`;
+    return () => {
+      document.title = "focusroom";
+    };
+  }, [screen, formattedTime]);
+
   const progressPct = React.useMemo(() => {
-    const done = totalSecondsRef.current - secondsLeft;
-    if (totalSecondsRef.current <= 0) return 0;
-    return Math.max(0, Math.min(100, Math.round((done / totalSecondsRef.current) * 100)));
-  }, [secondsLeft]);
+    const done = totalSeconds - secondsLeft;
+    if (totalSeconds <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((done / totalSeconds) * 100)));
+  }, [totalSeconds, secondsLeft]);
 
   const enterRoom = () => {
-    const nextIntention = intention.trim() || "Focused work";
-    setIntention(nextIntention);
-
+    const nextIntention = intentionDraft.trim() || "Focused work";
     const nextTotal = selectedDuration * 60;
-    setTotalSeconds(nextTotal);
-    totalSecondsRef.current = nextTotal;
-    setSecondsLeft(nextTotal);
-
-    setScreen("room");
-    setInSession(true);
-    setDoorKey((k) => k + 1);
-    window.localStorage.setItem("focusroom:session_active", "1");
-
     const nextRoomId = roomId ?? "deep-work";
-    if (!roomId) setRoomId(nextRoomId);
+
+    startSession({ roomId: nextRoomId, sessionId: null, intention: nextIntention, totalSeconds: nextTotal });
+    setScreen("room");
+    setDoorKey((k) => k + 1);
+
     if (socket) socket.emit("session:start", { roomId: nextRoomId, durationSeconds: nextTotal, intention: nextIntention });
 
     if (backendToken) {
       const startedAt = new Date().toISOString();
       sessionStartedAtRef.current = startedAt;
       createSession({ room_name: nextRoomId, started_at: startedAt }, backendToken)
-        .then((s) => setActiveSessionId(s.id))
+        .then((s) => setSessionId(s.id))
         .catch(() => {/* non-blocking */});
     }
   };
 
-  const handleEndSession = () => {
-    if (timerRef.current) window.clearInterval(timerRef.current);
-    timerRef.current = null;
-    setScreen("reflection");
-    setInSession(false);
-    window.localStorage.setItem("focusroom:session_active", "0");
-    sessionSync.end();
-  };
-
   const finishReflection = () => {
-    if (activeSessionId && backendToken) {
-      const elapsed = totalSecondsRef.current - secondsLeft;
-      endSession(
-        activeSessionId,
+    const state = useRoomStore.getState();
+    if (state.sessionId && backendToken && reflection.trim()) {
+      endSessionRequest(
+        state.sessionId,
         {
           ended_at: new Date().toISOString(),
-          duration_seconds: Math.max(0, elapsed),
-          reflection: reflection.trim() || undefined,
+          focus_seconds: state.focusSecondsAccrued,
+          social_seconds: state.socialSecondsAccrued,
+          end_reason: lastEndReasonRef.current,
+          reflection: reflection.trim()
         },
         backendToken
       ).catch(() => {/* non-blocking */});
     }
 
-    setIntention("");
+    setIntentionDraft("");
     setReflection("");
     setSelectedDuration(50);
-    setActiveSessionId(null);
     sessionStartedAtRef.current = null;
     setScreen("intention");
-    setInSession(false);
-    setRoomId(null);
-    window.localStorage.setItem("focusroom:session_active", "0");
+    resetSession();
   };
 
   return (
@@ -207,8 +198,8 @@ export function FocusRoomApp() {
                 className="input-field"
                 id="intentionInput"
                 type="text"
-                value={intention}
-                onChange={(e) => setIntention(e.target.value)}
+                value={intentionDraft}
+                onChange={(e) => setIntentionDraft(e.target.value)}
                 placeholder="e.g. Writing my newsletter draft…"
                 maxLength={80}
               />
@@ -233,6 +224,10 @@ export function FocusRoomApp() {
             <button type="button" className="btn-primary" onClick={enterRoom}>
               🔔 &nbsp; Enter the Room
             </button>
+
+            <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
+              <FocusStatBadge token={backendToken} />
+            </div>
           </div>
         </div>
 
@@ -255,27 +250,42 @@ export function FocusRoomApp() {
             <span>{intention || "—"}</span>
           </div>
 
+          <div
+            role="alert"
+            style={{
+              padding: "8px 14px",
+              marginBottom: 14,
+              borderRadius: 10,
+              fontSize: 12.5,
+              opacity: 0.85,
+              background: "rgba(240,122,160,0.08)",
+              border: "1px solid rgba(240,122,160,0.2)"
+            }}
+          >
+            Leaving this tab ends your session immediately — you&apos;ll lose {formattedTime}.
+          </div>
+
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
             <PresenceIndicator />
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <button
                 type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  if (roomId && socket) socket.emit("room:mode", { roomId, mode: "social" });
-                  router.push(`/breakout/${encodeURIComponent(breakoutRoomName)}`);
-                }}
+                className="dur-btn"
+                style={{ padding: "8px 14px", borderRadius: 999, opacity: cameraOn ? 1 : 0.7 }}
+                onClick={() => setCameraOn(!cameraOn)}
               >
-                Breakout
+                {cameraOn ? "📷 Camera on" : "📷 Turn on camera"}
               </button>
               <ModeToggle
                 onChange={(next) => {
-                  if (!roomId || !socket) return;
-                  socket.emit("room:mode", { roomId, mode: next });
+                  if (roomId && socket) socket.emit("room:mode", { roomId, mode: next });
+                  if (next === "social") router.push(`/breakout/${encodeURIComponent(breakoutRoomName)}`);
                 }}
               />
             </div>
           </div>
+
+          {cameraOn && roomId ? <LiveKitVideoStrip roomName={roomId} enabled={cameraOn} /> : null}
 
           <div className="silence-bar">
             <span aria-hidden="true">🤫</span>
@@ -319,7 +329,7 @@ export function FocusRoomApp() {
             <button type="button" className="btn-secondary">
               {progressPct}% done
             </button>
-            <button type="button" className="btn-end" onClick={handleEndSession}>
+            <button type="button" className="btn-end" onClick={() => endSessionAndShowReflection("manual")}>
               End session
             </button>
           </div>
@@ -330,11 +340,17 @@ export function FocusRoomApp() {
             <div style={{ fontSize: 40, marginBottom: 14 }} aria-hidden="true">
               🔔
             </div>
-            <p className="screen-eyebrow">Session complete</p>
+            <p className="screen-eyebrow">
+              {lastEndReasonRef.current === "tab_switch" ? "Session ended — tab switched" : "Session complete"}
+            </p>
             <h1 className="screen-title" style={{ marginBottom: 8 }}>
-              Well done.
+              {lastEndReasonRef.current === "tab_switch" ? "Session ended early." : "Well done."}
             </h1>
-            <p className="screen-sub">Take a moment before you move on.</p>
+            <p className="screen-sub">
+              {lastEndReasonRef.current === "tab_switch"
+                ? "Leaving the tab ends the session immediately, with no grace period."
+                : "Take a moment before you move on."}
+            </p>
 
             <div className="form-group" style={{ textAlign: "left" }}>
               <label htmlFor="reflectionInput">How did it go? (optional)</label>

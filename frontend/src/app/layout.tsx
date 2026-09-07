@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "@livekit/components-styles";
 import { Providers } from "@/app/providers";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 

@@ -10,9 +10,9 @@ from uuid import uuid4
 
 import socketio
 from redis.asyncio import Redis
-from sqlalchemy import select
 
 from app.auth import CurrentUser, verify_nextauth_jwt
+from app.crud import get_or_create_room
 from app.db import SessionLocal
 from app.models import Room, RoomMessage
 from app.redis_client import get_redis
@@ -238,20 +238,18 @@ async def session_end(sid: str, data: dict[str, Any]) -> None:
     if not room_id:
         return
 
+    reason = data.get("reason") if data.get("reason") in ("completed", "manual", "tab_switch") else None
+
     ended_at = datetime.now(tz=timezone.utc)
     await _stop_timer(room_id)
-    await sio.emit("session:end", {"roomId": room_id, "endedAt": ended_at.isoformat()}, room=room_id)
+    await sio.emit("session:end", {"roomId": room_id, "endedAt": ended_at.isoformat(), "reason": reason}, room=room_id)
 
 async def _upsert_room(room_name: str) -> Room:
     """Get or create a room by name, returning the ORM object."""
     async with SessionLocal() as db:
-        result = await db.execute(select(Room).where(Room.name == room_name))
-        room = result.scalar_one_or_none()
-        if not room:
-            room = Room(name=room_name, mode="focus")
-            db.add(room)
-            await db.commit()
-            await db.refresh(room)
+        room = await get_or_create_room(db, room_name)
+        await db.commit()
+        await db.refresh(room)
         return room
 
 
@@ -310,7 +308,7 @@ async def _start_timer(room_id: str, session_id: str, started_at: datetime, dura
                 room=room_id,
             )
             if done:
-                asyncio.create_task(session_end("server", {"roomId": room_id}))
+                asyncio.create_task(session_end("server", {"roomId": room_id, "reason": "completed"}))
                 return
             await asyncio.sleep(1)
 

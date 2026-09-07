@@ -6,14 +6,25 @@ from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
+from app.crud import get_or_create_room
 from app.db import get_db
 from app.limiter import limiter
 from app.models import User
-from app.schemas import RoomTokenIn, RoomTokenOut
+from app.schemas import RoomGetOrCreateIn, RoomOut, RoomTokenIn, RoomTokenOut
 from app.settings import settings
 
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
+
+
+@router.post("/get-or-create", response_model=RoomOut)
+async def get_or_create_room_endpoint(
+    payload: RoomGetOrCreateIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> RoomOut:
+    room = await get_or_create_room(db, payload.name, created_by_id=current.id)
+    await db.commit()
+    await db.refresh(room)
+    return RoomOut.model_validate(room, from_attributes=True)
 
 
 @router.post("/token", response_model=RoomTokenOut)
