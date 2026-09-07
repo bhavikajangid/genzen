@@ -3,12 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useRoomSocket } from "@/hooks/useRoomSocket";
 import { useRoomChat } from "@/hooks/useRoomChat";
 import { useRoomStore } from "@/stores/useRoomStore";
-import { useSessionEndOnHidden } from "@/hooks/useSessionEndOnHidden";
-import { endActiveSession } from "@/lib/endSession";
 import { BreakoutVoicePanel } from "@/components/BreakoutVoicePanel";
 
 function Cloud({ top, left, scale = 1, opacity = 1 }: { top: string; left: string; scale?: number; opacity?: number }) {
@@ -103,7 +100,6 @@ function ActiveDot({ active }: { active: boolean }) {
 
 export function BreakoutCafeRoom({ roomId }: { roomId: string }) {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { data: session } = useSession();
   const backendToken = (session as any)?.backendToken as string | undefined;
 
@@ -119,13 +115,6 @@ export function BreakoutCafeRoom({ roomId }: { roomId: string }) {
     if (focusRoomId && socket) socket.emit("room:mode", { roomId: focusRoomId, mode: "focus" });
     router.push("/");
   };
-
-  useSessionEndOnHidden(sessionActive, () => {
-    void endActiveSession("tab_switch", { backendToken }).then(() => {
-      queryClient.invalidateQueries({ queryKey: ["me-stats"] });
-      router.push("/");
-    });
-  });
 
   const [tab, setTab] = React.useState<"chat" | "voice">("chat");
   const [draft, setDraft] = React.useState("");

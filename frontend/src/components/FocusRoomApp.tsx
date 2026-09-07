@@ -11,7 +11,6 @@ import { AuthButtons } from "@/components/AuthButtons";
 import { useRoomStore } from "@/stores/useRoomStore";
 import { useRoomSocket } from "@/hooks/useRoomSocket";
 import { useSessionSync } from "@/hooks/useSessionSync";
-import { useSessionEndOnHidden } from "@/hooks/useSessionEndOnHidden";
 import { createSession, endSession as endSessionRequest } from "@/services/sessions";
 import { endActiveSession, type EndReason } from "@/lib/endSession";
 import { getIdentity } from "@/lib/identity";
@@ -84,8 +83,6 @@ export function FocusRoomApp() {
     },
     [backendToken, queryClient]
   );
-
-  useSessionEndOnHidden(sessionActive, () => endSessionAndShowReflection("tab_switch"));
 
   const breakoutRoomName = React.useMemo(() => {
     const base = roomId ?? "deep-work";
@@ -250,21 +247,6 @@ export function FocusRoomApp() {
             <span>{intention || "—"}</span>
           </div>
 
-          <div
-            role="alert"
-            style={{
-              padding: "8px 14px",
-              marginBottom: 14,
-              borderRadius: 10,
-              fontSize: 12.5,
-              opacity: 0.85,
-              background: "rgba(240,122,160,0.08)",
-              border: "1px solid rgba(240,122,160,0.2)"
-            }}
-          >
-            Leaving this tab ends your session immediately — you&apos;ll lose {formattedTime}.
-          </div>
-
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
             <PresenceIndicator />
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -340,17 +322,11 @@ export function FocusRoomApp() {
             <div style={{ fontSize: 40, marginBottom: 14 }} aria-hidden="true">
               🔔
             </div>
-            <p className="screen-eyebrow">
-              {lastEndReasonRef.current === "tab_switch" ? "Session ended — tab switched" : "Session complete"}
-            </p>
+            <p className="screen-eyebrow">Session complete</p>
             <h1 className="screen-title" style={{ marginBottom: 8 }}>
-              {lastEndReasonRef.current === "tab_switch" ? "Session ended early." : "Well done."}
+              Well done.
             </h1>
-            <p className="screen-sub">
-              {lastEndReasonRef.current === "tab_switch"
-                ? "Leaving the tab ends the session immediately, with no grace period."
-                : "Take a moment before you move on."}
-            </p>
+            <p className="screen-sub">Take a moment before you move on.</p>
 
             <div className="form-group" style={{ textAlign: "left" }}>
               <label htmlFor="reflectionInput">How did it go? (optional)</label>
