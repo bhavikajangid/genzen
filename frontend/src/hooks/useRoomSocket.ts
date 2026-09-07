@@ -3,25 +3,8 @@
 import * as React from "react";
 import { useSession } from "next-auth/react";
 import { getSocket } from "@/lib/socket";
+import { getIdentity } from "@/lib/identity";
 import { useRoomStore } from "@/stores/useRoomStore";
-
-function getIdentity() {
-  if (typeof window === "undefined") return { id: "anon", name: "Anonymous", emoji: "🧑‍💻" };
-
-  const KEY = "userIdentity";
-  const existing = window.localStorage.getItem(KEY);
-  if (existing) {
-    try {
-      const parsed = JSON.parse(existing) as { id: string; name: string; emoji?: string };
-      if (parsed.id && parsed.name) return parsed;
-    } catch {}
-  }
-
-  const id = crypto.randomUUID();
-  const next = { id, name: "You", emoji: "🧑‍💻" };
-  window.localStorage.setItem(KEY, JSON.stringify(next));
-  return next;
-}
 
 export function useRoomSocket(roomId: string | null) {
   const setPresence = useRoomStore((s) => s.setPresence);

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import type { Socket } from "socket.io-client";
+import { listRoomMessages } from "@/services/rooms";
 
 type ChatMessage = {
   id: string;
@@ -16,14 +17,35 @@ type ChatSocket = Socket<
   { "chat:send": (payload: { roomId: string; text: string }) => void }
 >;
 
-export function useRoomChat({ roomId, socket }: { roomId: string; socket: ChatSocket | null }) {
+export function useRoomChat({ roomId, socket, token }: { roomId: string; socket: ChatSocket | null; token?: string }) {
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [activeMap, setActiveMap] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     setMessages([]);
     setActiveMap({});
-  }, [roomId]);
+    if (!token) return;
+
+    let cancelled = false;
+    listRoomMessages(roomId, token)
+      .then((history) => {
+        if (cancelled) return;
+        setMessages(
+          history.map((m) => ({
+            id: m.id,
+            roomId: m.room_id,
+            text: m.content,
+            ts: m.created_at,
+            user: { id: m.user_id, name: m.user_name ?? "Someone", emoji: m.user_emoji }
+          }))
+        );
+      })
+      .catch(() => {/* non-blocking */});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, token]);
 
   React.useEffect(() => {
     if (!socket) return;

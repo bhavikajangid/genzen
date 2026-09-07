@@ -9,6 +9,9 @@ export interface SessionEndIn {
   ended_at: string
   duration_seconds?: number
   reflection?: string
+  focus_seconds?: number
+  social_seconds?: number
+  end_reason?: "completed" | "manual" | "tab_switch"
 }
 
 export interface SessionOut {
@@ -19,6 +22,9 @@ export interface SessionOut {
   ended_at?: string
   duration_seconds?: number
   reflection?: string
+  focus_seconds: number
+  social_seconds: number
+  end_reason?: "completed" | "manual" | "tab_switch"
 }
 
 export async function createSession(payload: SessionCreateIn, token?: string): Promise<SessionOut> {

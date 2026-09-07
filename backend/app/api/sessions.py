@@ -5,9 +5,10 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
+from app.crud import get_or_create_room
 from app.db import get_db
 from app.limiter import limiter
-from app.models import Room, SessionRecord
+from app.models import SessionRecord
 from app.schemas import SessionCreateIn, SessionEndIn, SessionOut
 
 
@@ -19,12 +20,7 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 async def create_session(
     request: Request, payload: SessionCreateIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> SessionOut:
-    result = await db.execute(select(Room).where(Room.name == payload.room_name))
-    room = result.scalar_one_or_none()
-    if not room:
-        room = Room(name=payload.room_name, mode="focus", created_by_id=current.id)
-        db.add(room)
-        await db.flush()
+    room = await get_or_create_room(db, payload.room_name, created_by_id=current.id)
 
     record = SessionRecord(room_id=room.id, owner_id=current.id, started_at=payload.started_at)
     db.add(record)
@@ -44,9 +40,17 @@ async def end_session(
     if not record or record.owner_id != current.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
+    focus_seconds = payload.focus_seconds if payload.focus_seconds is not None else record.focus_seconds
+    social_seconds = payload.social_seconds if payload.social_seconds is not None else record.social_seconds
+
     record.ended_at = payload.ended_at
-    record.duration_seconds = payload.duration_seconds
+    record.focus_seconds = focus_seconds
+    record.social_seconds = social_seconds
+    record.duration_seconds = (
+        payload.duration_seconds if payload.duration_seconds is not None else focus_seconds + social_seconds
+    )
     record.reflection = payload.reflection
+    record.end_reason = payload.end_reason
     await db.commit()
     await db.refresh(record)
     return SessionOut.model_validate(record, from_attributes=True)

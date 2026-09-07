@@ -1,19 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
 from app.api.friends import router as friends_router
+from app.api.messages import router as messages_router
 from app.api.rooms import router as rooms_router
 from app.api.sessions import router as sessions_router
 from app.db import get_db
 from app.limiter import limiter
-from app.models import User
-from app.schemas import OnboardIn, UserOut
+from app.models import SessionRecord, User
+from app.schemas import MeStatsOut, OnboardIn, UserOut
 from app.settings import settings
 
 
@@ -63,6 +67,18 @@ def create_fastapi_app() -> FastAPI:
         user = await _get_or_create_user(db, current)
         return UserOut.model_validate(user, from_attributes=True)
 
+    @app.get("/me/stats", response_model=MeStatsOut)
+    async def me_stats(current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> MeStatsOut:
+        start_of_day = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        result = await db.execute(
+            select(func.coalesce(func.sum(SessionRecord.focus_seconds), 0)).where(
+                SessionRecord.owner_id == current.id,
+                SessionRecord.started_at >= start_of_day,
+            )
+        )
+        total = result.scalar_one()
+        return MeStatsOut(focused_seconds_today=int(total))
+
     @app.post("/users/onboard", response_model=UserOut)
     async def onboard(
         payload: OnboardIn, current: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
@@ -77,6 +93,7 @@ def create_fastapi_app() -> FastAPI:
     app.include_router(friends_router)
     app.include_router(sessions_router)
     app.include_router(rooms_router)
+    app.include_router(messages_router)
 
     return app
 

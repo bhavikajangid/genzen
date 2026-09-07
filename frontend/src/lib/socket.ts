@@ -18,7 +18,7 @@ type ClientToServerEvents = {
   "room:leave": (payload: { roomId: string }) => void;
   "room:mode": (payload: { roomId: string; mode: "focus" | "social" }) => void;
   "session:start": (payload: { roomId: string; durationSeconds: number; intention?: string }) => void;
-  "session:end": (payload: { roomId: string }) => void;
+  "session:end": (payload: { roomId: string; reason?: "completed" | "manual" | "tab_switch" }) => void;
   "chat:send": (payload: { roomId: string; text: string }) => void;
 };
 
