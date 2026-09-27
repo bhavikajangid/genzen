@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import unquote
 
 import httpx
 from fastapi import Depends, HTTPException, Request, status
@@ -81,9 +82,9 @@ async def get_current_user(request: Request) -> CurrentUser:
         return await verify_nextauth_jwt(token)
 
     if settings.allow_guests:
-        guest_id = request.headers.get("x-guest-id") or "guest"
-        guest_name = request.headers.get("x-guest-name") or "Guest"
-        guest_emoji = request.headers.get("x-guest-emoji") or ""
+        guest_id = unquote(request.headers.get("x-guest-id") or "guest")
+        guest_name = unquote(request.headers.get("x-guest-name") or "Guest")
+        guest_emoji = unquote(request.headers.get("x-guest-emoji") or "")
         return CurrentUser(
             id=guest_id,
             email=None,

@@ -27,7 +27,7 @@ export function BreakoutVoicePanel({
     staleTime: 30_000
   });
 
-  const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? data?.url;
+  const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || data?.url;
 
   if (!open) return null;
 
@@ -57,20 +57,19 @@ export function BreakoutVoicePanel({
         </button>
       </div>
 
-      {!serverUrl ? (
-        <p style={{ opacity: 0.75 }}>Set `NEXT_PUBLIC_LIVEKIT_URL` (or return `url` from backend) to connect.</p>
-      ) : null}
-
       {!joined ? (
         <button
           type="button"
           className="btn-primary"
           style={{ width: "100%", marginTop: 8 }}
           onClick={() => setJoined(true)}
-          disabled={!serverUrl}
         >
           Join voice
         </button>
+      ) : null}
+
+      {joined && !isLoading && !error && !serverUrl ? (
+        <p style={{ opacity: 0.75, marginTop: 10 }}>Set `NEXT_PUBLIC_LIVEKIT_URL` (or return `url` from backend) to connect.</p>
       ) : null}
 
       {joined && isLoading ? <p style={{ opacity: 0.75, marginTop: 10 }}>Preparing breakout…</p> : null}

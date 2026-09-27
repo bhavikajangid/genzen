@@ -166,7 +166,7 @@ export function FocusRoomApp() {
       <BackgroundMedia inSession={inSession} doorKey={doorKey} />
       <div className="ambient" aria-hidden="true" />
 
-      <div className="app">
+      <div className="app" style={cameraOn && screen === "room" ? { maxWidth: 1100 } : undefined}>
         <nav>
           <span className="nav-brand">focusroom</span>
           {inSession ? (

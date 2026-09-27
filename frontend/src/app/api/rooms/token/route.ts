@@ -32,17 +32,25 @@ export async function GET(req: Request) {
         emoji: guestEmoji || undefined
       };
 
-  const res = await fetch(target, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(backendToken ? { authorization: `Bearer ${backendToken}` } : {}),
-      ...(!authed && guestId ? { "x-guest-id": guestId } : {}),
-      ...(!authed && guestName ? { "x-guest-name": guestName } : {}),
-      ...(!authed && guestEmoji ? { "x-guest-emoji": guestEmoji } : {})
-    },
-    body: JSON.stringify(body)
-  });
+  let res: Response;
+  try {
+    res = await fetch(target, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(backendToken ? { authorization: `Bearer ${backendToken}` } : {}),
+        ...(!authed && guestId ? { "x-guest-id": encodeURIComponent(guestId) } : {}),
+        ...(!authed && guestName ? { "x-guest-name": encodeURIComponent(guestName) } : {}),
+        ...(!authed && guestEmoji ? { "x-guest-emoji": encodeURIComponent(guestEmoji) } : {})
+      },
+      body: JSON.stringify(body)
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Could not reach backend at ${target}: ${(err as Error).message}` },
+      { status: 502 }
+    );
+  }
 
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });
