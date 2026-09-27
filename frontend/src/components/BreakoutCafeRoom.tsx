@@ -138,12 +138,19 @@ export function BreakoutCafeRoom({ roomId }: { roomId: string }) {
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(160deg, #F3B2A2 0%, #F6D2C7 30%, #E9C6DD 60%, #DDE8FF 100%)",
+        background:
+          "linear-gradient(160deg, var(--breakout-sky-a) 0%, var(--breakout-sky-b) 30%, var(--breakout-sky-c) 60%, var(--breakout-sky-d) 100%)",
         position: "relative",
         overflow: "hidden"
       }}
     >
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0) 40%)" }} />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "linear-gradient(180deg, rgba(var(--breakout-wash-rgb) / 0.34), rgba(var(--breakout-wash-rgb) / 0) 40%)"
+        }}
+      />
 
       <div style={{ position: "relative", zIndex: 1, maxWidth: 1160, margin: "0 auto", padding: "26px 20px 40px" }}>
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
@@ -174,8 +181,8 @@ export function BreakoutCafeRoom({ roomId }: { roomId: string }) {
           </div>
         </header>
 
-        <div style={{ position: "relative", borderRadius: 22, overflow: "hidden", border: "1px solid rgba(255,255,255,0.45)", background: "rgba(255,255,255,0.35)" }}>
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.18))" }} />
+        <div style={{ position: "relative", borderRadius: 22, overflow: "hidden", border: "1px solid var(--card-border)", background: "var(--card-bg)" }}>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(var(--breakout-wash-rgb) / 0.55), rgba(var(--breakout-wash-rgb) / 0.18))" }} />
 
           <Lamp left="14%" />
           <Lamp left="44%" />
@@ -183,12 +190,12 @@ export function BreakoutCafeRoom({ roomId }: { roomId: string }) {
 
           <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1.25fr 0.95fr", gap: 18, padding: 18 }}>
             {/* Scene */}
-            <div style={{ borderRadius: 18, overflow: "hidden", background: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.6)" }}>
+            <div style={{ borderRadius: 18, overflow: "hidden", background: "var(--surface)", border: "1px solid var(--border)" }}>
               <div style={{ padding: 16 }}>
                 <SkyWindow />
 
                 <div style={{ display: "flex", gap: 14, marginTop: 16, alignItems: "stretch" }}>
-                  <div style={{ flex: 1, borderRadius: 16, background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.7)", padding: 14 }}>
+                  <div style={{ flex: 1, borderRadius: 16, background: "var(--surface-hover)", border: "1px solid var(--border)", padding: 14 }}>
                     <div style={{ fontFamily: "Playfair Display, serif", fontSize: 18, marginBottom: 8 }}>Tables</div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       {presence.slice(0, 8).map((p) => (
@@ -197,8 +204,8 @@ export function BreakoutCafeRoom({ roomId }: { roomId: string }) {
                           style={{
                             borderRadius: 999,
                             padding: "8px 10px",
-                            border: "1px solid rgba(0,0,0,0.06)",
-                            background: "rgba(255,255,255,0.75)",
+                            border: "1px solid var(--border-soft)",
+                            background: "var(--surface-hover)",
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
@@ -216,7 +223,7 @@ export function BreakoutCafeRoom({ roomId }: { roomId: string }) {
                     </div>
                   </div>
 
-                  <div style={{ width: 220, borderRadius: 16, background: "rgba(230,140,110,0.35)", border: "1px solid rgba(255,255,255,0.55)", padding: 14 }}>
+                  <div style={{ width: 220, borderRadius: 16, background: "rgba(230,140,110,0.35)", border: "1px solid var(--border)", padding: 14 }}>
                     <div style={{ fontFamily: "Playfair Display, serif", fontSize: 20, marginBottom: 8 }}>Coffee</div>
                     <div
                       style={{
