@@ -46,6 +46,13 @@ html[data-theme="night"] {
   --cloud-front-fill: #dcd0f4;
   --cloud-front-hl: #eae4f8;
   --cloud-front-sh: #c8bce8;
+
+  /* Breakout café scene */
+  --breakout-sky-a: #f3b2a2;
+  --breakout-sky-b: #f6d2c7;
+  --breakout-sky-c: #e9c6dd;
+  --breakout-sky-d: #dde8ff;
+  --breakout-wash-rgb: 255 255 255;
 }
 
 html[data-theme="night"] {
@@ -79,6 +86,12 @@ html[data-theme="night"] {
   --cloud-front-fill: #b8aace;
   --cloud-front-hl: #ccc0e0;
   --cloud-front-sh: #9a8ab0;
+
+  --breakout-sky-a: #3a2a3a;
+  --breakout-sky-b: #2e2438;
+  --breakout-sky-c: #241f36;
+  --breakout-sky-d: #1a1c2e;
+  --breakout-wash-rgb: 20 24 34;
 }
 
 * { box-sizing: border-box; }
